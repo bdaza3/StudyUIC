@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Map, { Marker, NavigationControl } from "react-map-gl/maplibre";
 import { getSupabaseClient, getSupabaseConfigError } from "@/lib/supabase";
 import type { StudySpot } from "@/lib/types";
 import { SpotDetailDrawer } from "./SpotDetailDrawer";
+import { AuthSheet } from "./AuthSheet";
+import { SessionDetailSheet } from "./SessionDetailSheet";
+import { CreateSessionSheet } from "./CreateSessionSheet";
+import type { StudySession } from "@/lib/types";
 
 const UIC_CENTER = { longitude: -87.6495, latitude: 41.8708, zoom: 15.3 };
 
@@ -22,6 +26,10 @@ export function MapDashboard() {
   const [spots, setSpots] = useState<StudySpot[]>([]);
   const [selectedSpot, setSelectedSpot] = useState<StudySpot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<StudySession | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const missingStyleImages = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const loadSpots = async () => {
@@ -58,7 +66,21 @@ export function MapDashboard() {
   return (
     <main className="relative h-[100dvh] w-full overflow-hidden bg-slate-100">
       <div className="h-full w-full">
-        <Map initialViewState={UIC_CENTER} mapStyle="https://tiles.openfreemap.org/styles/liberty" attributionControl={false}>
+        <Map
+          initialViewState={UIC_CENTER}
+          mapStyle="https://tiles.openfreemap.org/styles/liberty"
+          attributionControl={false}
+          onLoad={(event) => {
+            const map = event.target;
+            map.on("styleimagemissing", (missingEvent) => {
+              const imageId = missingEvent.id;
+              if (missingStyleImages.current.has(imageId) || map.hasImage(imageId)) return;
+
+              map.addImage(imageId, new ImageData(1, 1));//transparent placeholder to avoid errors
+              missingStyleImages.current.add(imageId);
+            });
+          }}
+        >
           <NavigationControl position="bottom-right" showCompass={false} />
           {mappedSpots.map(({ spot, coordinates }) => (
             <Marker key={spot.id} longitude={coordinates[0]} latitude={coordinates[1]} anchor="bottom">
@@ -75,15 +97,20 @@ export function MapDashboard() {
         </Map>
       </div>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 p-4 pt-[max(1rem,env(safe-area-inset-top))]">
-        <div className="w-fit rounded-2xl bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+      <header className="absolute inset-x-0 top-0 z-10 flex items-start justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+        <div className="rounded-2xl bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
           <h1 className="text-lg font-bold tracking-tight text-uic-blue">StudyUIC</h1>
           <p className="text-xs text-slate-500">Find your next focus spot</p>
         </div>
+        <button onClick={() => setAuthOpen(true)} className="rounded-xl bg-uic-blue px-4 py-3 text-sm font-semibold text-white shadow-lg">Sign in</button>
       </header>
 
       {error && <p className="absolute inset-x-4 bottom-5 z-10 rounded-xl bg-red-50 p-3 text-sm text-red-700">Could not load spots: {error}</p>}
-      <SpotDetailDrawer spot={selectedSpot} onClose={() => setSelectedSpot(null)} />
+      {!error && !mappedSpots.length && <p className="absolute inset-x-4 bottom-5 z-10 rounded-xl bg-white p-4 text-sm shadow-lg">No study spots are available yet. Apply the seed migration to add the initial campus locations.</p>}
+      <SpotDetailDrawer spot={selectedSpot} onClose={() => setSelectedSpot(null)} onOpenSession={setSelectedSession} onCreateSession={() => setCreateOpen(true)} onRequireAuth={() => setAuthOpen(true)} />
+      <SessionDetailSheet session={selectedSession} onClose={() => setSelectedSession(null)} onRequireAuth={() => setAuthOpen(true)} />
+      <CreateSessionSheet spot={createOpen ? selectedSpot : null} onClose={() => setCreateOpen(false)} />
+      <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
     </main>
   );
 }

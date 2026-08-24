@@ -1,135 +1,34 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { getSupabaseClient, getSupabaseConfigError } from "@/lib/supabase";
-import type { StudyBeacon, StudySpot } from "@/lib/types";
+import { getSupabaseClient } from "@/lib/supabase";
+import { getCourses, getStudySessionsForSpot } from "@/lib/data";
+import type { Course, StudyBeacon, StudySession, StudySpot } from "@/lib/types";
+import { useAuth } from "./AuthProvider";
 
-type Props = { spot: StudySpot | null; onClose: () => void };
+type Props = { spot: StudySpot | null; onClose: () => void; onOpenSession: (session: StudySession) => void; onCreateSession: () => void; courseId?: string | null; onRequireAuth: () => void };
+const time = (date: string) => new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(date));
 
-const isActive = (beacon: StudyBeacon) => new Date(beacon.expires_at).getTime() > Date.now();
-
-export function SpotDetailDrawer({ spot, onClose }: Props) {
-  const [beacons, setBeacons] = useState<StudyBeacon[]>([]);
-  const [courseCode, setCourseCode] = useState("");
-  const [description, setDescription] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
+export function SpotDetailDrawer({ spot, onClose, onOpenSession, onCreateSession, courseId, onRequireAuth }: Props) {
+  const { user } = useAuth();
+  const [sessions, setSessions] = useState<StudySession[]>([]); const [beacons, setBeacons] = useState<StudyBeacon[]>([]); const [courses, setCourses] = useState<Course[]>([]);
+  const [offeringId, setOfferingId] = useState(""); const [description, setDescription] = useState(""); const [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
     if (!spot) return;
-    const configError = getSupabaseConfigError();
-    if (configError) {
-      setMessage(configError);
-      return;
-    }
-
-    const supabase = getSupabaseClient();
-    setBeacons([]);
-    setMessage(null);
-
-    const loadBeacons = async () => {
-      const { data, error } = await supabase
-        .from("study_beacons")
-        .select("id, spot_id, course_code, description, created_at, expires_at")
-        .eq("spot_id", spot.id)
-        .gt("expires_at", new Date().toISOString())
-        .order("created_at", { ascending: false });
-      if (error) setMessage(error.message);
-      else setBeacons((data ?? []) as StudyBeacon[]);
-    };
-    void loadBeacons();
-
-    const channel = supabase
-      .channel(`study-beacons:${spot.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "study_beacons", filter: `spot_id=eq.${spot.id}` },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            setBeacons((current) => current.filter((beacon) => beacon.id !== payload.old.id));
-            return;
-          }
-          const beacon = payload.new as StudyBeacon;
-          setBeacons((current) => {
-            const withoutUpdated = current.filter((item) => item.id !== beacon.id);
-            return isActive(beacon) ? [beacon, ...withoutUpdated] : withoutUpdated;
-          });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [spot]);
-
-  const submitBeacon = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!spot) return;
-    const configError = getSupabaseConfigError();
-    if (configError) {
-      setMessage(configError);
-      return;
-    }
-    setIsSubmitting(true);
-    setMessage(null);
-    try {
-      const { error } = await getSupabaseClient().from("study_beacons").insert({
-        spot_id: spot.id,
-        course_code: courseCode.trim(),
-        description: description.trim(),
-        expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-      });
-      if (error) setMessage(error.message);
-      else {
-        setCourseCode("");
-        setDescription("");
-        setMessage("Beacon is live for the next two hours.");
-      }
-    } catch (submitError) {
-      setMessage(submitError instanceof Error ? submitError.message : "Could not submit beacon.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
+    const supabase = getSupabaseClient(); const reloadSessions = () => void getStudySessionsForSpot(spot.id, courseId).then(setSessions).catch(() => setMessage("Unable to load study sessions."));
+    const reloadBeacons = () => void supabase.from("study_beacons").select("id,spot_id,course_code,description,created_at,expires_at").eq("spot_id", spot.id).gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }).then(({ data }) => setBeacons((data ?? []) as StudyBeacon[]));
+    reloadSessions(); reloadBeacons(); void getCourses().then(setCourses).catch(() => {});
+    const channel = supabase.channel(`spot:${spot.id}`).on("postgres_changes", { event: "*", schema: "public", table: "study_sessions", filter: `spot_id=eq.${spot.id}` }, reloadSessions).on("postgres_changes", { event: "*", schema: "public", table: "study_beacons", filter: `spot_id=eq.${spot.id}` }, reloadBeacons).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [spot, courseId]);
   if (!spot) return null;
-
-  return (
-    <section role="dialog" aria-modal="true" aria-label={`${spot.name} details`} className="absolute inset-x-0 bottom-0 z-20 rounded-t-3xl bg-white shadow-2xl">
-      <div className="mx-auto h-1.5 w-10 rounded-full bg-slate-300" />
-      <div className="max-h-[78dvh] overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-uic-flame">{spot.building}</p>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900">{spot.name}</h2>
-            <p className="mt-1 text-sm text-slate-600">Outlet density: <span className="font-semibold">{spot.outlet_density}</span></p>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Close details">✕</button>
-        </div>
-
-        <div className="mt-6 border-t border-slate-100 pt-5">
-          <h3 className="font-bold text-slate-900">Live study groups</h3>
-          <div className="mt-3 space-y-2">
-            {beacons.length ? beacons.map((beacon) => (
-              <article key={beacon.id} className="rounded-xl bg-blue-50 p-3">
-                <p className="font-semibold text-uic-blue">{beacon.course_code}</p>
-                <p className="mt-0.5 text-sm text-slate-700">{beacon.description}</p>
-              </article>
-            )) : <p className="text-sm text-slate-500">No live groups here yet. Start one below.</p>}
-          </div>
-        </div>
-
-        <form onSubmit={submitBeacon} className="mt-6 space-y-3 border-t border-slate-100 pt-5">
-          <h3 className="font-bold text-slate-900">Drop a beacon</h3>
-          <input required maxLength={32} value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="Course code (e.g. CS 251)" className="w-full rounded-xl border border-slate-300 px-3 py-3 text-base outline-none focus:border-uic-blue focus:ring-2 focus:ring-blue-100" />
-          <textarea required maxLength={280} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What are you working on?" rows={2} className="w-full resize-none rounded-xl border border-slate-300 px-3 py-3 text-base outline-none focus:border-uic-blue focus:ring-2 focus:ring-blue-100" />
-          <button disabled={isSubmitting} type="submit" className="w-full rounded-xl bg-uic-blue px-4 py-3 font-semibold text-white transition-colors hover:bg-blue-900 disabled:cursor-not-allowed disabled:opacity-60">
-            {isSubmitting ? "Dropping beacon…" : "Drop a Beacon"}
-          </button>
-          {message && <p role="status" className="text-center text-sm text-slate-600">{message}</p>}
-        </form>
-      </div>
-    </section>
-  );
+  const dropBeacon = async (event: FormEvent) => {
+    event.preventDefault(); if (!user) return onRequireAuth(); if (!offeringId) return setMessage("Select a course first.");
+    const supabase = getSupabaseClient();
+    const { data: offering } = await supabase.from("course_offerings").select("id").eq("course_id", offeringId).eq("active", true).maybeSingle();
+    if (!offering) return setMessage("That course is unavailable this term.");
+    const { error } = await supabase.rpc("create_beacon", { p_spot_id: spot.id, p_course_offering_id: offering.id, p_description: description });
+    if (error) setMessage("Unable to drop beacon. Please try again."); else { setDescription(""); setMessage("Beacon is live for two hours."); }
+  };
+  return <section role="dialog" aria-modal="true" className="absolute inset-x-0 bottom-0 z-20 rounded-t-3xl bg-white shadow-2xl"><div className="mx-auto h-1.5 w-10 rounded-full bg-slate-300"/><div className="max-h-[78dvh] overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4"><div className="flex justify-between"><div><p className="text-sm font-semibold text-uic-flame">{spot.building}</p><h2 className="text-2xl font-bold">{spot.name}</h2><p className="text-sm text-slate-600">Outlet density: {spot.outlet_density}</p></div><button onClick={onClose} className="h-10 w-10 rounded-full hover:bg-slate-100" aria-label="Close">✕</button></div><div className="mt-5 border-t pt-4"><h3 className="font-bold">Active study sessions</h3>{sessions.length ? <div className="mt-3 space-y-2">{sessions.map(session=><button key={session.id} onClick={()=>onOpenSession(session)} className="w-full rounded-xl bg-blue-50 p-3 text-left"><p className="text-sm font-semibold text-uic-blue">{session.course_code ?? "Open study"}</p><p className="font-semibold">{session.title}</p><p className="text-sm text-slate-600">{time(session.starts_at)} – {time(session.ends_at)} · 👥 {session.attendee_count}{session.max_attendees ? ` / ${session.max_attendees}` : ""}</p></button>)}</div>:<p className="mt-2 text-sm text-slate-500">No active study sessions here yet.</p>}</div><div className="mt-5 border-t pt-4"><h3 className="font-bold">🔥 Live now</h3>{beacons.length ? beacons.map(beacon=><div key={beacon.id} className="mt-2 rounded-xl bg-amber-50 p-3"><b className="text-uic-blue">{beacon.course_code}</b><p className="text-sm">{beacon.description}</p></div>):<p className="mt-2 text-sm text-slate-500">No live beacons.</p>}</div><form onSubmit={dropBeacon} className="mt-5 space-y-2 border-t pt-4"><h3 className="font-bold">Drop a beacon</h3><select required value={offeringId} onChange={e=>setOfferingId(e.target.value)} className="w-full rounded-xl border p-3"><option value="">Select course</option>{courses.map(course=><option key={course.id} value={course.id}>{course.course_code} — {course.title}</option>)}</select><textarea required value={description} onChange={e=>setDescription(e.target.value)} maxLength={280} placeholder="What are you working on?" className="w-full rounded-xl border p-3"/><button className="w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">{user ? "Drop a Beacon" : "Sign in to drop a beacon"}</button>{message&&<p className="text-center text-sm text-slate-600">{message}</p>}</form></div></section>;
 }
