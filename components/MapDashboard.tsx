@@ -8,6 +8,8 @@ import { SpotDetailDrawer } from "./SpotDetailDrawer";
 import { AuthSheet } from "./AuthSheet";
 import { SessionDetailSheet } from "./SessionDetailSheet";
 import { CreateSessionSheet } from "./CreateSessionSheet";
+import { SuggestSpotSheet } from "./SpotCommunitySheet";
+import { useAuth } from "./AuthProvider";
 import type { StudySession } from "@/lib/types";
 
 const UIC_CENTER = { longitude: -87.6495, latitude: 41.8708, zoom: 15.3 };
@@ -29,6 +31,9 @@ export function MapDashboard() {
   const [authOpen, setAuthOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<StudySession | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [activity, setActivity] = useState<Record<string, string>>({});
+  const { user } = useAuth();
   const missingStyleImages = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -47,6 +52,8 @@ export function MapDashboard() {
 
         if (queryError) setError(queryError.message);
         else setSpots((data ?? []) as StudySpot[]);
+        const { data: activityData } = await getSupabaseClient().rpc("get_spot_activity");
+        setActivity(Object.fromEntries((activityData ?? []).map((item: { spot_id: string; crowd_level: string }) => [item.spot_id, item.crowd_level])));
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Unable to connect to Supabase.");
       }
@@ -91,6 +98,7 @@ export function MapDashboard() {
                 className="grid h-11 w-9 place-items-center rounded-t-full rounded-b-full border-2 border-white bg-uic-flame text-lg text-white shadow-lg transition-transform active:scale-95"
               >
                 <span aria-hidden="true" className="h-3 w-3 rounded-full bg-white" />
+                {activity[spot.id] && <span className="absolute -right-2 -top-2 rounded-full bg-white px-1 text-[10px] text-slate-800">{activity[spot.id] === "busy" ? "Busy" : activity[spot.id] === "moderate" ? "Mod" : "Quiet"}</span>}
               </button>
             </Marker>
           ))}
@@ -102,7 +110,7 @@ export function MapDashboard() {
           <h1 className="text-lg font-bold tracking-tight text-uic-blue">StudyUIC</h1>
           <p className="text-xs text-slate-500">Find your next focus spot</p>
         </div>
-        <button onClick={() => setAuthOpen(true)} className="rounded-xl bg-uic-blue px-4 py-3 text-sm font-semibold text-white shadow-lg">Sign in</button>
+        <div className="flex gap-2"><button onClick={() => user ? setSuggestOpen(true) : setAuthOpen(true)} className="rounded-xl bg-white px-3 py-3 text-sm font-semibold text-uic-blue shadow-lg">Suggest a spot</button><button onClick={() => setAuthOpen(true)} className="rounded-xl bg-uic-blue px-4 py-3 text-sm font-semibold text-white shadow-lg">{user ? "Account" : "Sign in"}</button></div>
       </header>
 
       {error && <p className="absolute inset-x-4 bottom-5 z-10 rounded-xl bg-red-50 p-3 text-sm text-red-700">Could not load spots: {error}</p>}
@@ -110,6 +118,7 @@ export function MapDashboard() {
       <SpotDetailDrawer spot={selectedSpot} onClose={() => setSelectedSpot(null)} onOpenSession={setSelectedSession} onCreateSession={() => setCreateOpen(true)} onRequireAuth={() => setAuthOpen(true)} />
       <SessionDetailSheet session={selectedSession} onClose={() => setSelectedSession(null)} onRequireAuth={() => setAuthOpen(true)} />
       <CreateSessionSheet spot={createOpen ? selectedSpot : null} onClose={() => setCreateOpen(false)} />
+      <SuggestSpotSheet open={suggestOpen} onClose={() => setSuggestOpen(false)} />
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
     </main>
   );
