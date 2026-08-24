@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+* { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+body { margin: 0; background: #f8fafc; color: #0f172a; }
+
+.maplibregl-ctrl-bottom-right { bottom: calc(env(safe-area-inset-bottom) + 1rem); }
+.maplibregl-ctrl-group { border-radius: 0.75rem; overflow: hidden; box-shadow: 0 5px 18px rgb(15 23 42 / 0.16); }

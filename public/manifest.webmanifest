@@ -1,0 +1,9 @@
+{
+  "name": "StudyUIC",
+  "short_name": "StudyUIC",
+  "description": "UIC study spots and live study groups.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#001E62"
+}
