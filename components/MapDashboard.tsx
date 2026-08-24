@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Map, { Marker, NavigationControl } from "react-map-gl/maplibre";
-import { getSupabaseClient } from "@/lib/supabase";
+import { getSupabaseClient, getSupabaseConfigError } from "@/lib/supabase";
 import type { StudySpot } from "@/lib/types";
 import { SpotDetailDrawer } from "./SpotDetailDrawer";
 
@@ -25,13 +25,23 @@ export function MapDashboard() {
 
   useEffect(() => {
     const loadSpots = async () => {
-      const { data, error: queryError } = await getSupabaseClient()
-        .from("study_spots")
-        .select("id, name, building, outlet_density, coordinates")
-        .order("name");
+      const configError = getSupabaseConfigError();
+      if (configError) {
+        setError(configError);
+        return;
+      }
 
-      if (queryError) setError(queryError.message);
-      else setSpots((data ?? []) as StudySpot[]);
+      try {
+        const { data, error: queryError } = await getSupabaseClient()
+          .from("study_spots")
+          .select("id, name, building, outlet_density, coordinates")
+          .order("name");
+
+        if (queryError) setError(queryError.message);
+        else setSpots((data ?? []) as StudySpot[]);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Unable to connect to Supabase.");
+      }
     };
 
     void loadSpots();

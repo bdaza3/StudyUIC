@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { getSupabaseClient } from "@/lib/supabase";
+import { getSupabaseClient, getSupabaseConfigError } from "@/lib/supabase";
 import type { StudyBeacon, StudySpot } from "@/lib/types";
 
 type Props = { spot: StudySpot | null; onClose: () => void };
@@ -17,6 +17,12 @@ export function SpotDetailDrawer({ spot, onClose }: Props) {
 
   useEffect(() => {
     if (!spot) return;
+    const configError = getSupabaseConfigError();
+    if (configError) {
+      setMessage(configError);
+      return;
+    }
+
     const supabase = getSupabaseClient();
     setBeacons([]);
     setMessage(null);
@@ -60,20 +66,30 @@ export function SpotDetailDrawer({ spot, onClose }: Props) {
   const submitBeacon = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!spot) return;
+    const configError = getSupabaseConfigError();
+    if (configError) {
+      setMessage(configError);
+      return;
+    }
     setIsSubmitting(true);
     setMessage(null);
-    const { error } = await getSupabaseClient().from("study_beacons").insert({
-      spot_id: spot.id,
-      course_code: courseCode.trim(),
-      description: description.trim(),
-      expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    });
-    setIsSubmitting(false);
-    if (error) setMessage(error.message);
-    else {
-      setCourseCode("");
-      setDescription("");
-      setMessage("Beacon is live for the next two hours.");
+    try {
+      const { error } = await getSupabaseClient().from("study_beacons").insert({
+        spot_id: spot.id,
+        course_code: courseCode.trim(),
+        description: description.trim(),
+        expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      });
+      if (error) setMessage(error.message);
+      else {
+        setCourseCode("");
+        setDescription("");
+        setMessage("Beacon is live for the next two hours.");
+      }
+    } catch (submitError) {
+      setMessage(submitError instanceof Error ? submitError.message : "Could not submit beacon.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
