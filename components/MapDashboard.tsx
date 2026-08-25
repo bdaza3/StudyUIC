@@ -10,6 +10,7 @@ import { SessionDetailSheet } from "./SessionDetailSheet";
 import { CreateSessionSheet } from "./CreateSessionSheet";
 import { SuggestSpotSheet } from "./SpotCommunitySheet";
 import { useAuth } from "./AuthProvider";
+import { Profile } from "./Profile";
 import type { StudySession } from "@/lib/types";
 
 const UIC_CENTER = { longitude: -87.6495, latitude: 41.8708, zoom: 15.3 };
@@ -38,6 +39,7 @@ export function MapDashboard() {
   const [createOpen, setCreateOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [activity, setActivity] = useState<Record<string, string>>({});
+  const [profileOpen, setProfileOpen] = useState(false);
   const { user } = useAuth();
   const missingStyleImages = useRef<Set<string>>(new Set());
 
@@ -160,10 +162,10 @@ export function MapDashboard() {
             Suggest a spot
           </button>
           <button
-            onClick={() => setAuthOpen(true)}
+            onClick={() => (user ? setProfileOpen(true) : setAuthOpen(true))}
             className="rounded-xl bg-uic-blue px-4 py-3 text-sm font-semibold text-white shadow-lg"
           >
-            {user ? "Account" : "Sign in"}
+            {user ? "Profile" : "Sign in"}
           </button>
         </div>
       </header>
@@ -175,8 +177,7 @@ export function MapDashboard() {
       )}
       {!error && !mappedSpots.length && (
         <p className="absolute inset-x-4 bottom-5 z-10 rounded-xl bg-white p-4 text-sm shadow-lg">
-          No study spots are available yet. Apply the seed migration to add the
-          initial campus locations.
+          No study spots are available yet.
         </p>
       )}
       <SpotDetailDrawer
@@ -200,6 +201,7 @@ export function MapDashboard() {
         onClose={() => setSuggestOpen(false)}
       />
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
+      <Profile open={profileOpen} onClose={() => setProfileOpen(false)} />
     </main>
   );
 }

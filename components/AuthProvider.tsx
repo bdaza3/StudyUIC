@@ -27,15 +27,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
   const signIn = async (email: string) => {
-    if (!email.trim().toLowerCase().endsWith("@uic.edu"))
-      return "Use your @uic.edu email address.";
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail.endsWith("@uic.edu")) {
+      return "Use your UIC email address ending in @uic.edu.";
+    }
     const { error } = await getSupabaseClient().auth.signInWithOtp({
-      email,
+      email: normalizedEmail,
       options: { emailRedirectTo: window.location.origin },
     });
-    return error
-      ? "We could not send that sign-in link. Please try again."
-      : null;
+    return error ? "We could not send a sign-in link. Please try again." : null;
   };
   const signOut = async () => {
     await getSupabaseClient().auth.signOut();

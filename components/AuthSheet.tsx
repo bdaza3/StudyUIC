@@ -17,11 +17,12 @@ export function AuthSheet({
   const [message, setMessage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   if (!open) return null;
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSending(true);
-    const result = await signIn(email);
-    setMessage(result ?? "Check your UIC email for a secure sign-in link.");
+    setMessage(null);
+    const error = await signIn(email);
+    setMessage(error ?? "Check your UIC inbox for your sign-in link.");
     setSending(false);
   };
   return (
@@ -37,14 +38,14 @@ export function AuthSheet({
         <div className="mx-auto mb-5 h-1.5 w-10 rounded-full bg-slate-300" />
         <div className="flex justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold">Join StudyUIC</h2>
+            <h2 className="text-xl font-bold">Sign in to StudyUIC</h2>
             <p className="mt-1 text-sm text-slate-600">{reason}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close sign in"
             className="h-10 w-10 rounded-full hover:bg-slate-100"
+            aria-label="Close"
           >
             ✕
           </button>
@@ -55,7 +56,7 @@ export function AuthSheet({
             required
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             placeholder="netid@uic.edu"
             className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
           />
@@ -64,10 +65,18 @@ export function AuthSheet({
           disabled={sending}
           className="mt-4 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white disabled:opacity-60"
         >
-          {sending ? "Sending…" : "Send sign-in link"}
+          {sending ? "Sending…" : "Email me a sign-in link"}
         </button>
+        <p className="mt-3 text-center text-xs text-slate-500">
+          Personal email addresses are not accepted.
+        </p>
+        {/* If error message, make text red */}
         {message && (
-          <p role="status" className="mt-3 text-center text-sm text-slate-600">
+          <p
+            className={`mt-3 text-center text-sm ${
+              message.startsWith("Check your") ? "text-slate-500" : "text-red-600"
+            }`}
+          >
             {message}
           </p>
         )}
