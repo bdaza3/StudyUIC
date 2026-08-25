@@ -3,6 +3,128 @@ import { FormEvent, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabase";
 import type { StudySpot } from "@/lib/types";
 
-export function SuggestSpotSheet({ open,onClose }: { open:boolean;onClose:()=>void }) { const [name,setName]=useState("");const [building,setBuilding]=useState("");const [floor,setFloor]=useState("");const [notice,setNotice]=useState<string|null>(null);if(!open)return null;const submit=async(e:FormEvent)=>{e.preventDefault();const {error}=await getSupabaseClient().rpc("suggest_study_spot",{p_name:name,p_building:building,p_floor:floor,p_description:""});setNotice(error?"Could not submit your suggestion.":"Thanks! An admin will review this spot.");};return <div className="absolute inset-0 z-50 flex items-end bg-slate-950/40"><form onSubmit={submit} className="w-full rounded-t-3xl bg-white p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]"><div className="flex justify-between"><h2 className="text-xl font-bold">Suggest a spot</h2><button type="button" onClick={onClose}>✕</button></div><p className="mt-1 text-sm text-slate-600">Help grow the UIC study map.</p><div className="mt-4 space-y-3"><input required value={name} onChange={e=>setName(e.target.value)} placeholder="Spot name" className="w-full rounded-xl border p-3"/><input required value={building} onChange={e=>setBuilding(e.target.value)} placeholder="Building" className="w-full rounded-xl border p-3"/><input value={floor} onChange={e=>setFloor(e.target.value)} placeholder="Floor (optional)" className="w-full rounded-xl border p-3"/></div><button className="mt-4 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">Submit for review</button>{notice&&<p className="mt-3 text-center text-sm">{notice}</p>}</form></div> }
+export function SuggestSpotSheet({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [building, setBuilding] = useState("");
+  const [floor, setFloor] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  if (!open) return null;
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const { error } = await getSupabaseClient().rpc("suggest_study_spot", {
+      p_name: name,
+      p_building: building,
+      p_floor: floor,
+      p_description: "",
+    });
+    setNotice(
+      error
+        ? "Could not submit your suggestion."
+        : "Thanks! An admin will review this spot.",
+    );
+  };
+  return (
+    <div className="absolute inset-0 z-50 flex items-end bg-slate-950/40">
+      <form
+        onSubmit={submit}
+        className="w-full rounded-t-3xl bg-white p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="flex justify-between">
+          <h2 className="text-xl font-bold">Suggest a spot</h2>
+          <button type="button" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-slate-600">
+          Help grow the UIC study map.
+        </p>
+        <div className="mt-4 space-y-3">
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Spot name"
+            className="w-full rounded-xl border p-3"
+          />
+          <input
+            required
+            value={building}
+            onChange={(e) => setBuilding(e.target.value)}
+            placeholder="Building"
+            className="w-full rounded-xl border p-3"
+          />
+          <input
+            value={floor}
+            onChange={(e) => setFloor(e.target.value)}
+            placeholder="Floor (optional)"
+            className="w-full rounded-xl border p-3"
+          />
+        </div>
+        <button className="mt-4 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">
+          Submit for review
+        </button>
+        {notice && <p className="mt-3 text-center text-sm">{notice}</p>}
+      </form>
+    </div>
+  );
+}
 
-export function ReportSpotSheet({ spot,open,onClose }: {spot:StudySpot|null;open:boolean;onClose:()=>void}) {const [reason,setReason]=useState("incorrect_information");const [notice,setNotice]=useState<string|null>(null);if(!open||!spot)return null;const submit=async(e:FormEvent)=>{e.preventDefault();const {error}=await getSupabaseClient().rpc("report_study_spot",{p_spot_id:spot.id,p_reason:reason,p_description:""});setNotice(error?"Could not send the report.":"Report sent for review.");};return <div className="absolute inset-0 z-50 flex items-end bg-slate-950/40"><form onSubmit={submit} className="w-full rounded-t-3xl bg-white p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]"><div className="flex justify-between"><h2 className="text-xl font-bold">Report {spot.name}</h2><button type="button" onClick={onClose}>✕</button></div><select value={reason} onChange={e=>setReason(e.target.value)} className="mt-4 w-full rounded-xl border p-3"><option value="incorrect_information">Incorrect information</option><option value="wrong_location">Wrong location</option><option value="closed">Closed</option><option value="not_a_study_spot">Not a study spot</option><option value="duplicate">Duplicate</option><option value="other">Other</option></select><button className="mt-4 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">Send report</button>{notice&&<p className="mt-3 text-center text-sm">{notice}</p>}</form></div>}
+export function ReportSpotSheet({
+  spot,
+  open,
+  onClose,
+}: {
+  spot: StudySpot | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState("incorrect_information");
+  const [notice, setNotice] = useState<string | null>(null);
+  if (!open || !spot) return null;
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const { error } = await getSupabaseClient().rpc("report_study_spot", {
+      p_spot_id: spot.id,
+      p_reason: reason,
+      p_description: "",
+    });
+    setNotice(error ? "Could not send the report." : "Report sent for review.");
+  };
+  return (
+    <div className="absolute inset-0 z-50 flex items-end bg-slate-950/40">
+      <form
+        onSubmit={submit}
+        className="w-full rounded-t-3xl bg-white p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="flex justify-between">
+          <h2 className="text-xl font-bold">Report {spot.name}</h2>
+          <button type="button" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <select
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="mt-4 w-full rounded-xl border p-3"
+        >
+          <option value="incorrect_information">Incorrect information</option>
+          <option value="wrong_location">Wrong location</option>
+          <option value="closed">Closed</option>
+          <option value="not_a_study_spot">Not a study spot</option>
+          <option value="duplicate">Duplicate</option>
+          <option value="other">Other</option>
+        </select>
+        <button className="mt-4 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">
+          Send report
+        </button>
+        {notice && <p className="mt-3 text-center text-sm">{notice}</p>}
+      </form>
+    </div>
+  );
+}

@@ -6,12 +6,225 @@ import type { Course, StudyBeacon, StudySession, StudySpot } from "@/lib/types";
 import { useAuth } from "./AuthProvider";
 import { ReportSpotSheet } from "./SpotCommunitySheet";
 
-type Props={spot:StudySpot|null;onClose:()=>void;onOpenSession:(s:StudySession)=>void;onCreateSession:()=>void;courseId?:string|null;onRequireAuth:()=>void};
-export function SpotDetailDrawer({spot,onClose,onOpenSession,onCreateSession,courseId,onRequireAuth}:Props){
- const {user}=useAuth();const [sessions,setSessions]=useState<StudySession[]>([]),[beacons,setBeacons]=useState<StudyBeacon[]>([]),[courses,setCourses]=useState<Course[]>([]),[offering,setOffering]=useState(""),[description,setDescription]=useState(""),[crowd,setCrowd]=useState<string|null>(null),[report,setReport]=useState(false),[notice,setNotice]=useState<string|null>(null);
- useEffect(()=>{if(!spot)return;const s=getSupabaseClient();const load=()=>void getStudySessionsForSpot(spot.id,courseId).then(setSessions).catch(()=>setNotice("Unable to load sessions."));const live=()=>void s.from("study_beacons").select("id,spot_id,course_code,description,created_at,expires_at").eq("spot_id",spot.id).gt("expires_at",new Date().toISOString()).then(({data})=>setBeacons((data??[])as StudyBeacon[]));load();live();void getCourses().then(setCourses);const c=s.channel(`spot:${spot.id}`).on("postgres_changes",{event:"*",schema:"public",table:"study_sessions",filter:`spot_id=eq.${spot.id}`},load).on("postgres_changes",{event:"*",schema:"public",table:"study_beacons",filter:`spot_id=eq.${spot.id}`},live).subscribe();return()=>{void s.removeChannel(c);};},[spot,courseId]);
- if(!spot)return null;
- const crowdReport=async(level:"quiet"|"moderate"|"busy")=>{if(!user)return onRequireAuth();const {error}=await getSupabaseClient().rpc("report_spot_activity",{p_spot_id:spot.id,p_crowd_level:level});if(error)setNotice("Could not update activity.");else{setCrowd(level);setNotice("Activity is live for two hours.");}};
- const beacon=async(e:FormEvent)=>{e.preventDefault();if(!user)return onRequireAuth();const s=getSupabaseClient();const {data}=await s.from("course_offerings").select("id").eq("course_id",offering).eq("active",true).maybeSingle();if(!data)return setNotice("Select an active course.");const {error}=await s.rpc("create_beacon",{p_spot_id:spot.id,p_course_offering_id:data.id,p_description:description});if(error)setNotice("Could not drop beacon.");else{setDescription("");setNotice("Beacon is live for two hours.");}};
- return <section role="dialog" aria-modal="true" className="absolute inset-x-0 bottom-0 z-20 rounded-t-3xl bg-white shadow-2xl"><div className="mx-auto h-1.5 w-10 rounded-full bg-slate-300"/><div className="max-h-[78dvh] overflow-y-auto px-5 pb-6 pt-4"><div className="flex justify-between"><div><p className="text-sm font-semibold text-uic-flame">{spot.building}</p><h2 className="text-2xl font-bold">{spot.name}</h2><p className="text-sm text-slate-600">Outlet availability: {spot.outlet_density}</p></div><button onClick={onClose} className="h-10 w-10 rounded-full hover:bg-slate-100">✕</button></div><div className="mt-4 rounded-xl bg-slate-50 p-3"><b>How busy is this spot?</b><div className="mt-2 grid grid-cols-3 gap-2">{(["quiet","moderate","busy"]as const).map(x=><button key={x} onClick={()=>void crowdReport(x)} className={`rounded-lg border py-2 capitalize ${crowd===x?"border-uic-blue bg-blue-50":"bg-white"}`}>{x}</button>)}</div></div><button onClick={()=>user?onCreateSession():onRequireAuth()} className="mt-3 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">{user?"Create study session":"Sign in to create a session"}</button><button onClick={()=>user?setReport(true):onRequireAuth()} className="mt-2 w-full text-sm text-slate-600 underline">Report incorrect information</button><div className="mt-5 border-t pt-4"><h3 className="font-bold">Active study sessions</h3>{sessions.map(x=><button key={x.id} onClick={()=>onOpenSession(x)} className="mt-2 w-full rounded-xl bg-blue-50 p-3 text-left"><b>{x.course_code??"Open study"}</b><p>{x.title}</p><small>👥 {x.attendee_count}{x.max_attendees?` / ${x.max_attendees}`:""}</small></button>)}{!sessions.length&&<p className="mt-2 text-sm text-slate-500">No active study sessions.</p>}</div><div className="mt-5 border-t pt-4"><h3 className="font-bold">🔥 Live now</h3>{beacons.map(x=><div key={x.id} className="mt-2 rounded-xl bg-amber-50 p-3"><b>{x.course_code}</b><p>{x.description}</p></div>)}</div><form onSubmit={beacon} className="mt-5 space-y-2 border-t pt-4"><h3 className="font-bold">Drop a beacon</h3><select required value={offering} onChange={e=>setOffering(e.target.value)} className="w-full rounded-xl border p-3"><option value="">Select course</option>{courses.map(x=><option key={x.id} value={x.id}>{x.course_code} — {x.title}</option>)}</select><textarea required value={description} onChange={e=>setDescription(e.target.value)} placeholder="What are you working on?" className="w-full rounded-xl border p-3"/><button className="w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">{user?"Drop a beacon":"Sign in to drop a beacon"}</button></form>{notice&&<p className="mt-3 text-center text-sm">{notice}</p>}</div><ReportSpotSheet spot={spot} open={report} onClose={()=>setReport(false)}/></section>;
+type Props = {
+  spot: StudySpot | null;
+  onClose: () => void;
+  onOpenSession: (s: StudySession) => void;
+  onCreateSession: () => void;
+  courseId?: string | null;
+  onRequireAuth: () => void;
+};
+export function SpotDetailDrawer({
+  spot,
+  onClose,
+  onOpenSession,
+  onCreateSession,
+  courseId,
+  onRequireAuth,
+}: Props) {
+  const { user } = useAuth();
+  const [sessions, setSessions] = useState<StudySession[]>([]),
+    [beacons, setBeacons] = useState<StudyBeacon[]>([]),
+    [courses, setCourses] = useState<Course[]>([]),
+    [offering, setOffering] = useState(""),
+    [description, setDescription] = useState(""),
+    [crowd, setCrowd] = useState<string | null>(null),
+    [report, setReport] = useState(false),
+    [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!spot) return;
+    const s = getSupabaseClient();
+    const load = () =>
+      void getStudySessionsForSpot(spot.id, courseId)
+        .then(setSessions)
+        .catch(() => setNotice("Unable to load sessions."));
+    const live = () =>
+      void s
+        .from("study_beacons")
+        .select("id,spot_id,course_code,description,created_at,expires_at")
+        .eq("spot_id", spot.id)
+        .gt("expires_at", new Date().toISOString())
+        .then(({ data }) => setBeacons((data ?? []) as StudyBeacon[]));
+    load();
+    live();
+    void getCourses().then(setCourses);
+    const c = s
+      .channel(`spot:${spot.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "study_sessions",
+          filter: `spot_id=eq.${spot.id}`,
+        },
+        load,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "study_beacons",
+          filter: `spot_id=eq.${spot.id}`,
+        },
+        live,
+      )
+      .subscribe();
+    return () => {
+      void s.removeChannel(c);
+    };
+  }, [spot, courseId]);
+  if (!spot) return null;
+  const crowdReport = async (level: "quiet" | "moderate" | "busy") => {
+    if (!user) return onRequireAuth();
+    const { error } = await getSupabaseClient().rpc("report_spot_activity", {
+      p_spot_id: spot.id,
+      p_crowd_level: level,
+    });
+    if (error) setNotice("Could not update activity.");
+    else {
+      setCrowd(level);
+      setNotice("Activity is live for two hours.");
+    }
+  };
+  const beacon = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user) return onRequireAuth();
+    const s = getSupabaseClient();
+    const { data } = await s
+      .from("course_offerings")
+      .select("id")
+      .eq("course_id", offering)
+      .eq("active", true)
+      .maybeSingle();
+    if (!data) return setNotice("Select an active course.");
+    const { error } = await s.rpc("create_beacon", {
+      p_spot_id: spot.id,
+      p_course_offering_id: data.id,
+      p_description: description,
+    });
+    if (error) setNotice("Could not drop beacon.");
+    else {
+      setDescription("");
+      setNotice("Beacon is live for two hours.");
+    }
+  };
+  return (
+    <section
+      role="dialog"
+      aria-modal="true"
+      className="absolute inset-x-0 bottom-0 z-20 rounded-t-3xl bg-white shadow-2xl"
+    >
+      <div className="mx-auto h-1.5 w-10 rounded-full bg-slate-300" />
+      <div className="max-h-[78dvh] overflow-y-auto px-5 pb-6 pt-4">
+        <div className="flex justify-between">
+          <div>
+            <p className="text-sm font-semibold text-uic-flame">
+              {spot.building}
+            </p>
+            <h2 className="text-2xl font-bold">{spot.name}</h2>
+            <p className="text-sm text-slate-600">
+              Outlet availability: {spot.outlet_density}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="h-10 w-10 rounded-full hover:bg-slate-100"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          <b>How busy is this spot?</b>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {(["quiet", "moderate", "busy"] as const).map((x) => (
+              <button
+                key={x}
+                onClick={() => void crowdReport(x)}
+                className={`rounded-lg border py-2 capitalize ${crowd === x ? "border-uic-blue bg-blue-50" : "bg-white"}`}
+              >
+                {x}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={() => (user ? onCreateSession() : onRequireAuth())}
+          className="mt-3 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white"
+        >
+          {user ? "Create study session" : "Sign in to create a session"}
+        </button>
+        <button
+          onClick={() => (user ? setReport(true) : onRequireAuth())}
+          className="mt-2 w-full text-sm text-slate-600 underline"
+        >
+          Report incorrect information
+        </button>
+        <div className="mt-5 border-t pt-4">
+          <h3 className="font-bold">Active study sessions</h3>
+          {sessions.map((x) => (
+            <button
+              key={x.id}
+              onClick={() => onOpenSession(x)}
+              className="mt-2 w-full rounded-xl bg-blue-50 p-3 text-left"
+            >
+              <b>{x.course_code ?? "Open study"}</b>
+              <p>{x.title}</p>
+              <small>
+                👥 {x.attendee_count}
+                {x.max_attendees ? ` / ${x.max_attendees}` : ""}
+              </small>
+            </button>
+          ))}
+          {!sessions.length && (
+            <p className="mt-2 text-sm text-slate-500">
+              No active study sessions.
+            </p>
+          )}
+        </div>
+        <div className="mt-5 border-t pt-4">
+          <h3 className="font-bold">🔥 Live now</h3>
+          {beacons.map((x) => (
+            <div key={x.id} className="mt-2 rounded-xl bg-amber-50 p-3">
+              <b>{x.course_code}</b>
+              <p>{x.description}</p>
+            </div>
+          ))}
+        </div>
+        <form onSubmit={beacon} className="mt-5 space-y-2 border-t pt-4">
+          <h3 className="font-bold">Drop a beacon</h3>
+          <select
+            required
+            value={offering}
+            onChange={(e) => setOffering(e.target.value)}
+            className="w-full rounded-xl border p-3"
+          >
+            <option value="">Select course</option>
+            {courses.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.course_code} — {x.title}
+              </option>
+            ))}
+          </select>
+          <textarea
+            required
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What are you working on?"
+            className="w-full rounded-xl border p-3"
+          />
+          <button className="w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">
+            {user ? "Drop a beacon" : "Sign in to drop a beacon"}
+          </button>
+        </form>
+        {notice && <p className="mt-3 text-center text-sm">{notice}</p>}
+      </div>
+      <ReportSpotSheet
+        spot={spot}
+        open={report}
+        onClose={() => setReport(false)}
+      />
+    </section>
+  );
 }

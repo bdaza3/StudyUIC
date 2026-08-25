@@ -6,12 +6,176 @@ import { getSupabaseClient } from "@/lib/supabase";
 import type { SessionMember, SessionMessage, StudySession } from "@/lib/types";
 import { useAuth } from "./AuthProvider";
 
-export function SessionDetailSheet({ session, onClose, onRequireAuth }: { session: StudySession | null; onClose: () => void; onRequireAuth: () => void }) {
-  const { user } = useAuth(); const [members, setMembers] = useState<SessionMember[]>([]); const [messages, setMessages] = useState<SessionMessage[]>([]); const [joined, setJoined] = useState(false); const [text, setText] = useState(""); const [notice, setNotice] = useState<string | null>(null);
-  useEffect(() => { if (!session || !user) return; const supabase=getSupabaseClient(); const load=async()=>{ const next=await getSessionMembers(session.id).catch(()=>[]); setMembers(next); setJoined(next.some(m=>m.user_id===user.id)); }; void load(); const channel=supabase.channel(`session:${session.id}`).on("postgres_changes",{event:"*",schema:"public",table:"study_session_members",filter:`session_id=eq.${session.id}`},()=>void load()).on("postgres_changes",{event:"INSERT",schema:"public",table:"study_session_messages",filter:`session_id=eq.${session.id}`},()=>{if(joined) void getSessionMessages(session.id).then(setMessages);}).subscribe(); return()=>{void supabase.removeChannel(channel);}; },[session,user,joined]);
-  useEffect(()=>{ if(session&&joined) void getSessionMessages(session.id).then(setMessages).catch(()=>setNotice("Unable to load chat.")); },[session,joined]);
+export function SessionDetailSheet({
+  session,
+  onClose,
+  onRequireAuth,
+}: {
+  session: StudySession | null;
+  onClose: () => void;
+  onRequireAuth: () => void;
+}) {
+  const { user } = useAuth();
+  const [members, setMembers] = useState<SessionMember[]>([]);
+  const [messages, setMessages] = useState<SessionMessage[]>([]);
+  const [joined, setJoined] = useState(false);
+  const [text, setText] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!session || !user) return;
+    const supabase = getSupabaseClient();
+    const load = async () => {
+      const next = await getSessionMembers(session.id).catch(() => []);
+      setMembers(next);
+      setJoined(next.some((m) => m.user_id === user.id));
+    };
+    void load();
+    const channel = supabase
+      .channel(`session:${session.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "study_session_members",
+          filter: `session_id=eq.${session.id}`,
+        },
+        () => void load(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "study_session_messages",
+          filter: `session_id=eq.${session.id}`,
+        },
+        () => {
+          if (joined) void getSessionMessages(session.id).then(setMessages);
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [session, user, joined]);
+  useEffect(() => {
+    if (session && joined)
+      void getSessionMessages(session.id)
+        .then(setMessages)
+        .catch(() => setNotice("Unable to load chat."));
+  }, [session, joined]);
   if (!session) return null;
-  const act = async () => { if(!user) return onRequireAuth(); const {error}=await getSupabaseClient().rpc(joined?"leave_study_session":"join_study_session",{p_session_id:session.id}); if(error) setNotice(joined?"Unable to leave this session.":"This session is full or unavailable."); };
-  const send = async (e: FormEvent) => { e.preventDefault(); if(!text.trim()) return; const {error}=await getSupabaseClient().from("study_session_messages").insert({session_id:session.id,user_id:user?.id,message:text.trim()}); if(error)setNotice("Unable to send message."); else setText(""); };
-  return <section role="dialog" aria-modal="true" className="absolute inset-0 z-30 flex flex-col bg-white"><header className="flex items-center justify-between border-b p-4 pt-[max(1rem,env(safe-area-inset-top))]"><button onClick={onClose} className="rounded-lg p-2">← Back</button><span className="text-sm font-semibold text-uic-blue">{session.course_code ?? "Study session"}</span></header><main className="flex-1 overflow-y-auto p-5"><h2 className="text-2xl font-bold">{session.title}</h2><p className="mt-2 text-slate-600">{session.description}</p><p className="mt-3 text-sm">{new Date(session.starts_at).toLocaleString()} – {new Intl.DateTimeFormat(undefined,{hour:"numeric",minute:"2-digit"}).format(new Date(session.ends_at))}</p><p className="mt-3 font-semibold">👥 {user ? members.length : session.attendee_count} {session.max_attendees ? `/ ${session.max_attendees}` : ""} students attending</p>{user&&<div className="mt-3 text-sm text-slate-600">{members.map(m=>m.display_name).join(", ")}</div>}<button onClick={act} className="mt-5 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">{!user?"Sign in to join":joined?"Leave Session":"Join Study Session"}</button>{notice&&<p className="mt-3 text-center text-sm text-slate-600">{notice}</p>}{joined&&<section className="mt-7 border-t pt-4"><h3 className="font-bold">Chat</h3><div className="mt-3 space-y-3">{messages.map(m=><div key={m.id}><p className="text-sm font-semibold">{m.display_name}</p><p>{m.message}</p><p className="text-xs text-slate-400">{new Intl.DateTimeFormat(undefined,{hour:"numeric",minute:"2-digit"}).format(new Date(m.created_at))}</p></div>)}</div></section>}</main>{joined&&<form onSubmit={send} className="flex gap-2 border-t p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]"><input value={text} onChange={e=>setText(e.target.value)} maxLength={500} placeholder="Message the group" className="min-w-0 flex-1 rounded-xl border px-3 py-2"/><button className="rounded-xl bg-uic-blue px-4 text-white">Send</button></form>}</section>;
+  const act = async () => {
+    if (!user) return onRequireAuth();
+    const { error } = await getSupabaseClient().rpc(
+      joined ? "leave_study_session" : "join_study_session",
+      { p_session_id: session.id },
+    );
+    if (error)
+      setNotice(
+        joined
+          ? "Unable to leave this session."
+          : "This session is full or unavailable.",
+      );
+  };
+  const send = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    const { error } = await getSupabaseClient()
+      .from("study_session_messages")
+      .insert({
+        session_id: session.id,
+        user_id: user?.id,
+        message: text.trim(),
+      });
+    if (error) setNotice("Unable to send message.");
+    else setText("");
+  };
+  return (
+    <section
+      role="dialog"
+      aria-modal="true"
+      className="absolute inset-0 z-30 flex flex-col bg-white"
+    >
+      <header className="flex items-center justify-between border-b p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+        <button onClick={onClose} className="rounded-lg p-2">
+          ← Back
+        </button>
+        <span className="text-sm font-semibold text-uic-blue">
+          {session.course_code ?? "Study session"}
+        </span>
+      </header>
+      <main className="flex-1 overflow-y-auto p-5">
+        <h2 className="text-2xl font-bold">{session.title}</h2>
+        <p className="mt-2 text-slate-600">{session.description}</p>
+        <p className="mt-3 text-sm">
+          {new Date(session.starts_at).toLocaleString()} –{" "}
+          {new Intl.DateTimeFormat(undefined, {
+            hour: "numeric",
+            minute: "2-digit",
+          }).format(new Date(session.ends_at))}
+        </p>
+        <p className="mt-3 font-semibold">
+          👥 {user ? members.length : session.attendee_count}{" "}
+          {session.max_attendees ? `/ ${session.max_attendees}` : ""} students
+          attending
+        </p>
+        {user && (
+          <div className="mt-3 text-sm text-slate-600">
+            {members.map((m) => m.display_name).join(", ")}
+          </div>
+        )}
+        <button
+          onClick={act}
+          className="mt-5 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white"
+        >
+          {!user
+            ? "Sign in to join"
+            : joined
+              ? "Leave Session"
+              : "Join Study Session"}
+        </button>
+        {notice && (
+          <p className="mt-3 text-center text-sm text-slate-600">{notice}</p>
+        )}
+        {joined && (
+          <section className="mt-7 border-t pt-4">
+            <h3 className="font-bold">Chat</h3>
+            <div className="mt-3 space-y-3">
+              {messages.map((m) => (
+                <div key={m.id}>
+                  <p className="text-sm font-semibold">{m.display_name}</p>
+                  <p>{m.message}</p>
+                  <p className="text-xs text-slate-400">
+                    {new Intl.DateTimeFormat(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    }).format(new Date(m.created_at))}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+      {joined && (
+        <form
+          onSubmit={send}
+          className="flex gap-2 border-t p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]"
+        >
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={500}
+            placeholder="Message the group"
+            className="min-w-0 flex-1 rounded-xl border px-3 py-2"
+          />
+          <button className="rounded-xl bg-uic-blue px-4 text-white">
+            Send
+          </button>
+        </form>
+      )}
+    </section>
+  );
 }
