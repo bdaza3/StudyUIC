@@ -16,6 +16,14 @@ export type StudyBeacon = {
   created_at: string;
   expires_at: string;
 };
+export type MapBeacon = StudyBeacon & {
+  user_id: string;
+  title: string;
+  coordinates: GeoJSON.Point | string;
+  attending_count: number;
+  interested_count: number;
+  people: { display_name: string; avatar_url: string | null }[];
+};
 
 export type Course = {
   id: string;

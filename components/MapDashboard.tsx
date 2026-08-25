@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Map, { Marker, NavigationControl } from "react-map-gl/maplibre";
 import { getSupabaseClient, getSupabaseConfigError } from "@/lib/supabase";
-import type { StudySpot } from "@/lib/types";
+import type { MapBeacon, StudySpot } from "@/lib/types";
 import { SpotDetailDrawer } from "./SpotDetailDrawer";
 import { AuthSheet } from "./AuthSheet";
 import { SessionDetailSheet } from "./SessionDetailSheet";
@@ -11,6 +11,7 @@ import { CreateSessionSheet } from "./CreateSessionSheet";
 import { SuggestSpotSheet } from "./SpotCommunitySheet";
 import { useAuth } from "./AuthProvider";
 import { Profile } from "./Profile";
+import { MapBeaconDetail, MapBeaconSheet } from "./MapBeaconSheet";
 import type { StudySession } from "@/lib/types";
 
 const UIC_CENTER = { longitude: -87.6495, latitude: 41.8708, zoom: 15.3 };
@@ -40,8 +41,16 @@ export function MapDashboard() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [activity, setActivity] = useState<Record<string, string>>({});
   const [profileOpen, setProfileOpen] = useState(false);
+  const [mapBeacons, setMapBeacons] = useState<MapBeacon[]>([]);
+  const [beaconCoordinates, setBeaconCoordinates] = useState<
+    [number, number] | null
+  >(null);
+  const [selectedMapBeacon, setSelectedMapBeacon] = useState<MapBeacon | null>(
+    null,
+  );
   const { user } = useAuth();
   const missingStyleImages = useRef<Set<string>>(new Set());
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const loadSpots = async () => {
@@ -71,6 +80,10 @@ export function MapDashboard() {
             ),
           ),
         );
+        const { data: beaconData } = await getSupabaseClient().rpc(
+          "get_live_map_beacons",
+        );
+        setMapBeacons((beaconData ?? []) as MapBeacon[]);
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -81,6 +94,30 @@ export function MapDashboard() {
     };
 
     void loadSpots();
+  }, []);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    const reload = () =>
+      void supabase
+        .rpc("get_live_map_beacons")
+        .then(({ data }) => setMapBeacons((data ?? []) as MapBeacon[]));
+    const channel = supabase
+      .channel("map-beacons")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "map_beacons" },
+        reload,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "map_beacon_members" },
+        reload,
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   const mappedSpots = useMemo(
@@ -99,6 +136,25 @@ export function MapDashboard() {
           initialViewState={UIC_CENTER}
           mapStyle="https://tiles.openfreemap.org/styles/liberty"
           attributionControl={false}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            user
+              ? setBeaconCoordinates([event.lngLat.lng, event.lngLat.lat])
+              : setAuthOpen(true);
+          }}
+          onTouchStart={(event) => {
+            longPressTimer.current = setTimeout(() => {
+              user
+                ? setBeaconCoordinates([event.lngLat.lng, event.lngLat.lat])
+                : setAuthOpen(true);
+            }, 1000);
+          }}
+          onTouchEnd={() => {
+            if (longPressTimer.current) clearTimeout(longPressTimer.current);
+          }}
+          onTouchCancel={() => {
+            if (longPressTimer.current) clearTimeout(longPressTimer.current);
+          }}
           onLoad={(event) => {
             const map = event.target;
             map.on("styleimagemissing", (missingEvent) => {
@@ -144,6 +200,25 @@ export function MapDashboard() {
               </button>
             </Marker>
           ))}
+          {mapBeacons.map((beacon) => {
+            const coordinates = pointCoordinates(beacon.coordinates);
+            return coordinates ? (
+              <Marker
+                key={beacon.id}
+                longitude={coordinates[0]}
+                latitude={coordinates[1]}
+                anchor="bottom"
+              >
+                <button
+                  onClick={() => setSelectedMapBeacon(beacon)}
+                  className="relative grid h-11 min-w-11 place-items-center rounded-full border-2 border-white bg-amber-500 px-2 text-xs font-bold text-slate-900 shadow-lg"
+                  aria-label={`Live ${beacon.course_code} beacon`}
+                >
+                  📍
+                </button>
+              </Marker>
+            ) : null;
+          })}
         </Map>
       </div>
 
@@ -169,6 +244,28 @@ export function MapDashboard() {
           </button>
         </div>
       </header>
+      <button
+        onClick={() => {
+          if (!user) return setAuthOpen(true);
+          if (!navigator.geolocation)
+            return setError("Your browser does not support location.");
+          navigator.geolocation.getCurrentPosition(
+            (position) =>
+              setBeaconCoordinates([
+                position.coords.longitude,
+                position.coords.latitude,
+              ]),
+            () =>
+              setError(
+                "Location permission is required to place a beacon here.",
+              ),
+            { enableHighAccuracy: true },
+          );
+        }}
+        className="absolute bottom-6 left-4 z-10 rounded-xl bg-uic-flame px-4 py-3 text-sm font-semibold text-white shadow-lg"
+      >
+        Create beacon here
+      </button>
 
       {error && (
         <p className="absolute inset-x-4 bottom-5 z-10 rounded-xl bg-red-50 p-3 text-sm text-red-700">
@@ -202,6 +299,15 @@ export function MapDashboard() {
       />
       <AuthSheet open={authOpen} onClose={() => setAuthOpen(false)} />
       <Profile open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <MapBeaconSheet
+        coordinates={beaconCoordinates}
+        onClose={() => setBeaconCoordinates(null)}
+        onRequireAuth={() => setAuthOpen(true)}
+      />
+      <MapBeaconDetail
+        beacon={selectedMapBeacon}
+        onClose={() => setSelectedMapBeacon(null)}
+      />
     </main>
   );
 }
