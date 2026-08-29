@@ -20,6 +20,8 @@ export type MapBeacon = StudyBeacon & {
   user_id: string;
   title: string;
   coordinates: GeoJSON.Point | string;
+  max_attendees: number | null;
+  course_members_only: boolean;
   attending_count: number;
   interested_count: number;
   people: { display_name: string; avatar_url: string | null }[];

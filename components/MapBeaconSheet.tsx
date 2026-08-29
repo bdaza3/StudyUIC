@@ -20,6 +20,8 @@ export function MapBeaconSheet({
     [title, setTitle] = useState(""),
     [description, setDescription] = useState(""),
     [minutes, setMinutes] = useState("120"),
+    [maxAttendees, setMaxAttendees] = useState(""),
+    [courseMembersOnly, setCourseMembersOnly] = useState(false),
     [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     if (coordinates) void getCourses().then(setCourses);
@@ -41,6 +43,9 @@ export function MapBeaconSheet({
       return setNotice("Choose a valid point on the map.");
     if (!Number.isInteger(duration) || duration < 1 || duration > 180)
       return setNotice("Choose a duration up to three hours.");
+    const capacity = maxAttendees ? Number(maxAttendees) : null;
+    if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1))
+      return setNotice("Maximum attendees must be a whole number of at least 1.");
     const { error } = await s.rpc("create_map_beacon", {
       p_longitude: coordinates[0],
       p_latitude: coordinates[1],
@@ -48,6 +53,8 @@ export function MapBeaconSheet({
       p_title: title,
       p_description: description,
       p_duration_minutes: duration,
+      p_max_attendees: capacity,
+      p_course_members_only: courseMembersOnly,
     });
     if (error)
       setNotice(
@@ -118,6 +125,23 @@ export function MapBeaconSheet({
               <option value="180">3 hours (maximum)</option>
             </select>
           </label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={maxAttendees}
+            onChange={(e) => setMaxAttendees(e.target.value)}
+            placeholder="Maximum attendees (optional)"
+            className="w-full rounded-xl border p-3"
+          />
+          <label className="flex gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={courseMembersOnly}
+              onChange={(e) => setCourseMembersOnly(e.target.checked)}
+            />
+            Only allow students enrolled in this course to attend
+          </label>
         </div>
         <button className="mt-4 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">
           {user ? "Create beacon" : "Sign in to create beacon"}
@@ -160,6 +184,11 @@ export function MapBeaconDetail({
         <p className="mt-3">{beacon.description}</p>
         <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3">
           <div>
+            {beacon.max_attendees && (
+              <p className="text-sm text-slate-600">
+                Capacity: {beacon.max_attendees}
+              </p>
+            )}
             <b>👥 {beacon.attending_count} attending</b>
             <p className="text-sm text-slate-600">
               ☆ {beacon.interested_count} interested
@@ -181,10 +210,14 @@ export function MapBeaconDetail({
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               onClick={() =>
-                void getSupabaseClient().rpc("set_map_beacon_status", {
-                  p_beacon_id: beacon.id,
-                  p_status: "attending",
-                })
+                void getSupabaseClient()
+                  .rpc("set_map_beacon_status", {
+                    p_beacon_id: beacon.id,
+                    p_status: "attending",
+                  })
+                  .then(({ error }) => {
+                    if (error) window.alert(error.message);
+                  })
               }
               className="rounded-xl bg-uic-blue py-3 font-semibold text-white"
             >
@@ -204,6 +237,7 @@ export function MapBeaconDetail({
           </div>
         )}
         <p className="mt-2 text-sm text-slate-500">
+          {beacon.course_members_only && "Course enrollment required to attend. "}
           Expires{" "}
           {new Date(beacon.expires_at).toLocaleTimeString([], {
             hour: "numeric",

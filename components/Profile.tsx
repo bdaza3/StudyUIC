@@ -51,15 +51,24 @@ export function Profile({
   const save = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    const next = {
+      first_name: f.get("first") as string,
+      last_name: f.get("last") as string,
+      show_last_initial: f.get("initial") === "on",
+      major: f.get("major") as string,
+      graduation_year: f.get("year") ? Number(f.get("year")) : null,
+    };
     const { error } = await getSupabaseClient().rpc("update_my_profile", {
-      p_first_name: f.get("first") as string,
-      p_last_name: f.get("last") as string,
-      p_show_last_initial: f.get("initial") === "on",
-      p_major: f.get("major") as string,
-      p_graduation_year: f.get("year") ? Number(f.get("year")) : null,
+      p_first_name: next.first_name,
+      p_last_name: next.last_name,
+      p_show_last_initial: next.show_last_initial,
+      p_major: next.major,
+      p_graduation_year: next.graduation_year,
       p_avatar_url: "",
     });
-    setNotice(error ? "Could not save your profile." : "Profile saved.");
+    if (error) return setNotice("Could not save your profile.");
+    setData((current) => (current ? { ...current, ...next } : current));
+    setNotice("Profile saved.");
   };
   const initials = `${data.first_name?.[0] ?? "U"}${data.last_name?.[0] ?? ""}`;
   return (
@@ -81,7 +90,11 @@ export function Profile({
           <div>
             <p className="font-semibold">
               {data.first_name}{" "}
-              {data.show_last_initial ? data.last_name?.[0] + "." : ""}
+              {data.last_name
+                ? data.show_last_initial
+                  ? `${data.last_name[0]}.`
+                  : data.last_name
+                : ""}
             </p>
             <p className="text-sm text-slate-500">{data.email ?? user.email}</p>
           </div>
