@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabase";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth } from "../components/AuthProvider";
 
 type Submission = {
   id: string;
