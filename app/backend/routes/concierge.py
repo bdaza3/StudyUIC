@@ -3,6 +3,8 @@ from typing import Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.backend.services.llm import ConciergeIntent, OpenRouterClient
+
 
 router = APIRouter(prefix="/api/v1/concierge", tags=["concierge"])
 
@@ -13,9 +15,11 @@ class ConciergePlanRequest(BaseModel):
 
 
 class ConciergePlanResponse(BaseModel):
-    status: Literal["scaffold"]
+    status: Literal["planned"]
     mode: Literal["spot_search", "group_match"]
     message: str
+    provider: Literal["openrouter", "fallback"]
+    intent: ConciergeIntent
     next_stage: list[str]
 
 
@@ -31,10 +35,11 @@ def _resolve_mode(request: ConciergePlanRequest) -> Literal["spot_search", "grou
 
 @router.post("/plan", response_model=ConciergePlanResponse)
 async def create_concierge_plan(request: ConciergePlanRequest) -> ConciergePlanResponse:
-    """Validate concierge intent before the AI orchestration layer is connected."""
+    """Extract intent now; retrieval, conflict checks, and mutations remain separate stages."""
     mode = _resolve_mode(request)
+    llm = OpenRouterClient()
+    intent = await llm.extract_intent(request.message, mode)
     next_stage = [
-        "Add a LangGraph planner for structured intent extraction",
         "Connect semantic spot retrieval through Supabase pgvector",
     ]
     if mode == "group_match":
@@ -43,8 +48,10 @@ async def create_concierge_plan(request: ConciergePlanRequest) -> ConciergePlanR
         next_stage.append("Rank live activity and spot constraints")
 
     return ConciergePlanResponse(
-        status="scaffold",
+        status="planned",
         mode=mode,
         message=request.message,
+        provider="openrouter" if llm.configured else "fallback",
+        intent=intent,
         next_stage=next_stage,
     )

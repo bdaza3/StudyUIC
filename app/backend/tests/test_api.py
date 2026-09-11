@@ -21,11 +21,19 @@ def test_concierge_plan_scaffold_detects_group_intent():
 
     assert response.status_code == 200
     assert response.json() == {
-        "status": "scaffold",
+        "status": "planned",
         "mode": "group_match",
         "message": "Set up a Python study block for Tuesday afternoon.",
+        "provider": "fallback",
+        "intent": {
+            "task": "plan_group",
+            "subject": None,
+            "location_hint": None,
+            "time_hint": None,
+            "duration_minutes": None,
+            "constraints": ["Set up a Python study block for Tuesday afternoon."],
+        },
         "next_stage": [
-            "Add a LangGraph planner for structured intent extraction",
             "Connect semantic spot retrieval through Supabase pgvector",
             "Add calendar-aware conflict resolution and beacon creation",
         ],
