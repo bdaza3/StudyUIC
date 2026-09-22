@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 
 @dataclass(frozen=True)

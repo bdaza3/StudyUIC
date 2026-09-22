@@ -5,10 +5,14 @@ import json
 import logging
 from typing import Any
 
+from dotenv import load_dotenv
+
 from app.backend.services.embeddings import EmbeddingClient, EmbeddingSettings
 from app.backend.services.rag_documents import CourseRecord, construct_course_document
 from app.backend.services.supabase import SupabaseClient
 
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
