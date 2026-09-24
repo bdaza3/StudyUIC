@@ -39,6 +39,19 @@ def fallback_intent(message: str, mode: str) -> ConciergeIntent:
     return ConciergeIntent(task=task, constraints=[message[:160]])
 
 
+def _normalize_course_code(code: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", code.upper())
+
+
+def _extract_course_codes(text: str) -> set[str]:
+    matches = re.findall(r"\b[A-Z]{2,5}\s*[- ]?\s*\d{3}\b", text, flags=re.IGNORECASE)
+    return {_normalize_course_code(match) for match in matches}
+
+
+class GroundingValidationError(ValueError):
+    """Raised when an LLM response cites information outside retrieved records."""
+
+
 class OpenRouterClient:
     def __init__(self, settings: OpenRouterSettings | None = None) -> None:
         self.settings = settings or OpenRouterSettings.from_environment()
@@ -93,7 +106,14 @@ class OpenRouterClient:
         if not self.configured:
             raise ValueError("LLM API not configured. Set OPENROUTER_API_KEY.")
 
-        allowed_codes = {course["course_code"] for course in courses if course.get("course_code")}
+        allowed_codes = {
+            _normalize_course_code(course["course_code"])
+            for course in courses
+            if course.get("course_code")
+        }
+        allowed_code_text = ", ".join(
+            course["course_code"] for course in courses if course.get("course_code")
+        )
         context = "\n\n".join(
             f"Course: {course.get('course_code', 'Unknown')}\n{course['document_text']}"
             for course in courses
@@ -108,7 +128,7 @@ class OpenRouterClient:
                         "Answer university course questions using only the supplied course records. "
                         "Do not invent facts or use outside knowledge. If the records do not answer the "
                         "question, say so plainly. Cite every factual course claim with its course code in "
-                        "the form `CS 361`. Only cite course codes supplied in the records."
+                        f"the form `CS 361`. Only cite course codes supplied in the records: {allowed_code_text}."
                     ),
                 },
                 {"role": "user", "content": f"Question: {question}\n\nRetrieved records:\n{context}"},
@@ -132,7 +152,15 @@ class OpenRouterClient:
         except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise ValueError("OpenRouter returned an invalid grounded answer") from exc
 
-        cited_codes = set(re.findall(r"\b[A-Z]{2,5}\s\d{3}\b", answer))
-        if not cited_codes or not cited_codes.issubset(allowed_codes):
-            raise ValueError("LLM answer did not contain only valid retrieved-course citations")
+        cited_codes = _extract_course_codes(answer)
+        unsupported_codes = cited_codes - allowed_codes
+        if unsupported_codes:
+            raise GroundingValidationError(
+                "LLM answer cited courses that were not retrieved: "
+                + ", ".join(sorted(unsupported_codes))
+            )
+        if not cited_codes:
+            if not allowed_code_text:
+                raise ValueError("Retrieved courses did not contain course codes")
+            answer = f"{answer}\n\nSources: {allowed_code_text}"
         return answer

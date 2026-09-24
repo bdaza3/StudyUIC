@@ -14,6 +14,19 @@ def test_health_check():
     assert body["service"] == "study-uic-api"
 
 
+def test_cors_allows_local_frontend() -> None:
+    response = client.options(
+        "/api/v1/rag/answer",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
 def test_rag_search_returns_retrieved_courses(monkeypatch) -> None:
     async def fake_retrieve(self, query):
         return [RetrievalResult(

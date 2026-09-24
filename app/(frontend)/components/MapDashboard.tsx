@@ -12,6 +12,7 @@ import { SuggestSpotSheet } from "./SpotCommunitySheet";
 import { useAuth } from "./AuthProvider";
 import { Profile } from "./Profile";
 import { MapBeaconDetail, MapBeaconSheet } from "./MapBeaconSheet";
+import { CourseAssistant } from "./CourseAssistant";
 import type { StudySession } from "@/lib/types";
 
 const UIC_CENTER = { longitude: -87.6495, latitude: 41.8708, zoom: 15.3 };
@@ -244,6 +245,7 @@ export function MapDashboard() {
           </button>
         </div>
       </header>
+      <CourseAssistant />
       <button
         onClick={() => {
           if (!user) return setAuthOpen(true);

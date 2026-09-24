@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.backend.services.llm import OpenRouterClient
+from app.backend.services.llm import GroundingValidationError, OpenRouterClient
 from app.backend.services.rag_retrieval import RagRetriever, RetrievalQuery, RetrievalResult
 
 
@@ -38,6 +38,15 @@ def _course_context(results: list[RetrievalResult]) -> list[dict[str, str]]:
     ]
 
 
+def _grounded_fallback(results: list[RetrievalResult]) -> tuple[str, list[str]]:
+    courses = _course_context(results)
+    citations = list(dict.fromkeys(course["course_code"] for course in courses if course["course_code"]))
+    lines = ["I found these relevant course records:"]
+    for course in courses:
+        lines.append(f"\n{course['document_text']}")
+    return "\n".join(lines), citations
+
+
 async def _retrieve(request: RagSearchRequest) -> list[RetrievalResult]:
     try:
         return await RagRetriever().retrieve(RetrievalQuery(**request.model_dump()))
@@ -66,6 +75,14 @@ async def answer(request: RagSearchRequest) -> RagAnswerResponse:
     try:
         grounded_answer = await OpenRouterClient().answer_from_courses(
             request.question, _course_context(results)
+        )
+    except GroundingValidationError:
+        logger.warning("LLM answer failed grounding validation; returning retrieved records")
+        fallback_answer, fallback_citations = _grounded_fallback(results)
+        return RagAnswerResponse(
+            answer=fallback_answer,
+            citations=fallback_citations,
+            results=results,
         )
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
