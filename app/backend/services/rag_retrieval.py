@@ -31,7 +31,7 @@ class RetrievalQuery(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     top_k: int = Field(default=5, ge=1, le=20)
     department_filter: str | None = None
-    course_level_filter: int | None = None
+    course_level_filter: int | None = Field(default=None, ge=100, le=599)
 
 
 class RagRetriever:
@@ -42,7 +42,7 @@ class RagRetriever:
         supabase_client: SupabaseClient | None = None,
         embedding_client: EmbeddingClient | None = None,
     ) -> None:
-        self.supabase = supabase_client
+        self.supabase = supabase_client or SupabaseClient()
         self.embeddings = embedding_client or EmbeddingClient()
 
     async def retrieve(self, query: RetrievalQuery) -> list[RetrievalResult]:
@@ -73,22 +73,25 @@ class RagRetriever:
             logger.error(f"Failed to embed query: {exc}")
             raise
 
-        # Call Supabase RPC to retrieve similar documents
-        # (This requires the backend to have direct Supabase access, which we'll
-        # configure via SQL function rather than REST API for this operation)
-        #
-        # For now, return a placeholder indicating the retrieval would happen
-        # The actual retrieval would call retrieve_similar_documents RPC
-        logger.info(
-            f"Would retrieve {query.top_k} documents with embedding "
-            f"(department={query.department_filter}, level={query.course_level_filter})"
+        rows = await self.supabase.rpc(
+            "retrieve_similar_documents",
+            {
+                "p_query_embedding": query_embedding,
+                "p_limit": query.top_k,
+                "p_department": query.department_filter,
+                "p_course_level": query.course_level_filter,
+            },
         )
-
-        # This is a stub for now; the full implementation requires:
-        # 1. Direct pgvector query via Supabase RPC
-        # 2. Proper error handling for missing/malformed embeddings
-        # 3. Ranking and score normalization
-        return []
+        return [RetrievalResult(
+            document_id=str(row["id"]),
+            source_type=row["source_type"],
+            source_id=str(row["source_id"]),
+            document_text=row["document_text"],
+            metadata=row.get("metadata") or {},
+            similarity_score=float(row["similarity"]),
+            embedding_model=row["embedding_model"],
+            embedding_version=row["embedding_version"],
+        ) for row in rows]
 
     async def retrieve_similar_raw(
         self, query_embedding: list[float], top_k: int = 5
@@ -101,6 +104,10 @@ class RagRetriever:
         if not query_embedding or len(query_embedding) != 1536:
             raise ValueError(f"Query embedding must have dimension 1536")
 
+        if not 1 <= top_k <= 20:
+            raise ValueError("top_k must be between 1 and 20")
         logger.info(f"Searching for {top_k} similar documents...")
-        # Would call Supabase RPC here
-        return []
+        return await self.supabase.rpc(
+            "retrieve_similar_documents",
+            {"p_query_embedding": query_embedding, "p_limit": top_k},
+        )

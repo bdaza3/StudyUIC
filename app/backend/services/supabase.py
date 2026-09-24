@@ -52,6 +52,24 @@ class SupabaseClient:
         response.raise_for_status()
         return response.json()
 
+    async def rpc(self, function: str, parameters: dict[str, Any]) -> list[dict[str, Any]]:
+        """Call a PostgreSQL function exposed through Supabase's RPC API."""
+        url = f"{self.url}/rest/v1/rpc/{function}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "apikey": self.api_key,
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(url, headers=headers, json=parameters)
+
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, list):
+            raise ValueError(f"RPC {function} returned a non-list response")
+        return result
+
     async def fetch_courses(self) -> list[dict[str, Any]]:
         """Fetch all active courses with academic metadata."""
         return await self.query(

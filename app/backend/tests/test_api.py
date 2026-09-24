@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.backend.main import app
+from app.backend.services.rag_retrieval import RetrievalResult
 
 client = TestClient(app)
 
@@ -11,6 +12,29 @@ def test_health_check():
     body = response.json()
     assert body["status"] == "ok"
     assert body["service"] == "study-uic-api"
+
+
+def test_rag_search_returns_retrieved_courses(monkeypatch) -> None:
+    async def fake_retrieve(self, query):
+        return [RetrievalResult(
+            document_id="document-1",
+            source_type="course",
+            source_id="course-1",
+            document_text="CS 361 course record",
+            metadata={"course_code": "CS 361", "department": "CS"},
+            similarity_score=0.9,
+            embedding_model="text-embedding-3-small",
+            embedding_version="1",
+        )]
+
+    monkeypatch.setattr("app.backend.routes.rag.RagRetriever.retrieve", fake_retrieve)
+    response = client.post(
+        "/api/v1/rag/search",
+        json={"question": "Which course covers computer architecture?", "top_k": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["metadata"]["course_code"] == "CS 361"
 
 
 def test_concierge_plan_scaffold_detects_group_intent():

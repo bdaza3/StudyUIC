@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -86,3 +87,52 @@ class OpenRouterClient:
             return ConciergeIntent.model_validate(json.loads(content))
         except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
             raise ValueError("OpenRouter returned an invalid concierge intent") from exc
+
+    async def answer_from_courses(self, question: str, courses: list[dict[str, str]]) -> str:
+        """Answer solely from retrieved course documents and validate course citations."""
+        if not self.configured:
+            raise ValueError("LLM API not configured. Set OPENROUTER_API_KEY.")
+
+        allowed_codes = {course["course_code"] for course in courses if course.get("course_code")}
+        context = "\n\n".join(
+            f"Course: {course.get('course_code', 'Unknown')}\n{course['document_text']}"
+            for course in courses
+        )
+        payload = {
+            "model": self.settings.model,
+            "temperature": 0,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Answer university course questions using only the supplied course records. "
+                        "Do not invent facts or use outside knowledge. If the records do not answer the "
+                        "question, say so plainly. Cite every factual course claim with its course code in "
+                        "the form `CS 361`. Only cite course codes supplied in the records."
+                    ),
+                },
+                {"role": "user", "content": f"Question: {question}\n\nRetrieved records:\n{context}"},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {self.settings.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://studyuic.local",
+            "X-Title": "StudyUIC RAG Answers",
+        }
+        async with httpx.AsyncClient(timeout=self.settings.timeout_seconds) as client:
+            response = await client.post(
+                f"{self.settings.base_url.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+        response.raise_for_status()
+        try:
+            answer = response.json()["choices"][0]["message"]["content"].strip()
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
+            raise ValueError("OpenRouter returned an invalid grounded answer") from exc
+
+        cited_codes = set(re.findall(r"\b[A-Z]{2,5}\s\d{3}\b", answer))
+        if not cited_codes or not cited_codes.issubset(allowed_codes):
+            raise ValueError("LLM answer did not contain only valid retrieved-course citations")
+        return answer

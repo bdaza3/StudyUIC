@@ -86,29 +86,10 @@ class RagIngestionPipeline:
         }
 
         if not self.embeddings.configured:
-            logger.warning(
-                "Embedding API not configured. Storing documents without embeddings."
+            raise ValueError(
+                "Embedding API not configured; refusing to write placeholder embeddings. "
+                "Set OPENROUTER_API_KEY before ingesting documents."
             )
-            # Insert placeholder embeddings for testing
-            for doc in documents:
-                try:
-                    payload = {
-                        "source_type": doc.source_type,
-                        "source_id": doc.source_id,
-                        "source_table": doc.source_table,
-                        "document_text": doc.document_text,
-                        "metadata": doc.metadata.model_dump(),
-                        "embedding": [0.0] * 1536,  # Placeholder
-                        "embedding_model": "placeholder",
-                        "embedding_version": "0",
-                        "content_hash": doc.content_hash,
-                    }
-                    await self.supabase.upsert_rag_document(payload)
-                    stats["documents_inserted"] += 1
-                except Exception as exc:
-                    logger.error(f"Failed to insert document {doc.source_id}: {exc}")
-                    stats["errors"].append(str(exc))
-            return stats
 
         # Process documents in batches with real embeddings
         texts_to_embed = [doc.document_text for doc in documents]
