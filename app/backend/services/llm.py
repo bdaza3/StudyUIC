@@ -52,6 +52,13 @@ class GroundingValidationError(ValueError):
     """Raised when an LLM response cites information outside retrieved records."""
 
 
+class GroundedCourseAnswer(BaseModel):
+    """The machine-readable answer contract returned by the course assistant."""
+
+    answer: str = Field(min_length=1, max_length=4000)
+    citations: list[str] = Field(min_length=1, max_length=10)
+
+
 class OpenRouterClient:
     def __init__(self, settings: OpenRouterSettings | None = None) -> None:
         self.settings = settings or OpenRouterSettings.from_environment()
@@ -101,8 +108,10 @@ class OpenRouterClient:
         except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as exc:
             raise ValueError("OpenRouter returned an invalid concierge intent") from exc
 
-    async def answer_from_courses(self, question: str, courses: list[dict[str, str]]) -> str:
-        """Answer solely from retrieved course documents and validate course citations."""
+    async def answer_from_courses(
+        self, question: str, courses: list[dict[str, str]]
+    ) -> GroundedCourseAnswer:
+        """Give a conversational answer that is constrained to retrieved courses."""
         if not self.configured:
             raise ValueError("LLM API not configured. Set OPENROUTER_API_KEY.")
 
@@ -120,15 +129,25 @@ class OpenRouterClient:
         )
         payload = {
             "model": self.settings.model,
-            "temperature": 0,
+            "temperature": 0.3,
+            "response_format": {"type": "json_object"},
             "messages": [
                 {
                     "role": "system",
                     "content": (
-                        "Answer university course questions using only the supplied course records. "
-                        "Do not invent facts or use outside knowledge. If the records do not answer the "
-                        "question, say so plainly. Cite every factual course claim with its course code in "
-                        f"the form `CS 361`. Only cite course codes supplied in the records: {allowed_code_text}."
+                        "You are StudyUIC's friendly, practical course-planning assistant. Give the student "
+                        "a direct, conversational answer instead of repeating the course records. Start with "
+                        "the most useful takeaway, then briefly explain relevant details in short paragraphs "
+                        "or bullets. You may make a helpful recommendation only when it follows directly from "
+                        "the records. Do not assume the student's major, past courses, or goals beyond what "
+                        "they say.\n\n"
+                        "Use only the supplied course records. Never invent, fill in gaps, or use outside "
+                        "knowledge. If the records do not establish an answer, say what is missing in a "
+                        "helpful, natural way. Return only a JSON object with exactly two fields: `answer` "
+                        "(the conversational answer) and `citations` (an array of course codes supporting "
+                        "the answer). Do not put JSON in a Markdown code fence. Do not cite any course that "
+                        "is not supplied. The only permitted citation values are: "
+                        f"{allowed_code_text}."
                     ),
                 },
                 {"role": "user", "content": f"Question: {question}\n\nRetrieved records:\n{context}"},
@@ -148,19 +167,26 @@ class OpenRouterClient:
             )
         response.raise_for_status()
         try:
-            answer = response.json()["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError, TypeError, AttributeError) as exc:
+            content = response.json()["choices"][0]["message"]["content"]
+            answer = GroundedCourseAnswer.model_validate(json.loads(content))
+        except (KeyError, IndexError, TypeError, AttributeError, json.JSONDecodeError, ValidationError) as exc:
             raise ValueError("OpenRouter returned an invalid grounded answer") from exc
 
-        cited_codes = _extract_course_codes(answer)
+        cited_codes = {_normalize_course_code(code) for code in answer.citations}
         unsupported_codes = cited_codes - allowed_codes
         if unsupported_codes:
             raise GroundingValidationError(
                 "LLM answer cited courses that were not retrieved: "
                 + ", ".join(sorted(unsupported_codes))
             )
-        if not cited_codes:
-            if not allowed_code_text:
-                raise ValueError("Retrieved courses did not contain course codes")
-            answer = f"{answer}\n\nSources: {allowed_code_text}"
-        return answer
+        canonical_codes = {
+            _normalize_course_code(course["course_code"]): course["course_code"]
+            for course in courses
+            if course.get("course_code")
+        }
+        return GroundedCourseAnswer(
+            answer=answer.answer,
+            citations=list(dict.fromkeys(
+                canonical_codes[_normalize_course_code(code)] for code in answer.citations
+            )),
+        )

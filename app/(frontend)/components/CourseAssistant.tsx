@@ -25,6 +25,24 @@ type RagAnswer = {
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
+function AnswerText({ text }: { text: string }) {
+  const lines = text.split("\n").filter(Boolean);
+  return (
+    <div className="space-y-2">
+      {lines.map((line, index) =>
+        line.trim().startsWith("- ") || line.trim().startsWith("* ") ? (
+          <div key={`${line}-${index}`} className="flex gap-2">
+            <span aria-hidden="true">•</span>
+            <span>{line.trim().slice(2)}</span>
+          </div>
+        ) : (
+          <p key={`${line}-${index}`}>{line}</p>
+        ),
+      )}
+    </div>
+  );
+}
+
 export function CourseAssistant() {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -134,8 +152,9 @@ export function CourseAssistant() {
 
           {answer && (
             <div className="mt-4 space-y-3">
-              <div className="rounded-xl bg-blue-50 p-3 text-sm leading-6 text-slate-800 whitespace-pre-wrap">
-                {answer.answer}
+              <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-slate-800">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-uic-blue">StudyUIC assistant</p>
+                <AnswerText text={answer.answer} />
               </div>
               {answer.citations.length > 0 && (
                 <div aria-label="Course citations" className="flex flex-wrap gap-2">

@@ -1,6 +1,5 @@
 """RAG search and grounded course-answer endpoints."""
 
-import re
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -41,10 +40,12 @@ def _course_context(results: list[RetrievalResult]) -> list[dict[str, str]]:
 def _grounded_fallback(results: list[RetrievalResult]) -> tuple[str, list[str]]:
     courses = _course_context(results)
     citations = list(dict.fromkeys(course["course_code"] for course in courses if course["course_code"]))
-    lines = ["I found these relevant course records:"]
-    for course in courses:
-        lines.append(f"\n{course['document_text']}")
-    return "\n".join(lines), citations
+    source_list = ", ".join(citations)
+    return (
+        "I found relevant course records, but I couldn't produce a fully verified "
+        f"answer right now. Try asking again, or review the retrieved course details below. Sources: {source_list}",
+        citations,
+    )
 
 
 async def _retrieve(request: RagSearchRequest) -> list[RetrievalResult]:
@@ -76,8 +77,8 @@ async def answer(request: RagSearchRequest) -> RagAnswerResponse:
         grounded_answer = await OpenRouterClient().answer_from_courses(
             request.question, _course_context(results)
         )
-    except GroundingValidationError:
-        logger.warning("LLM answer failed grounding validation; returning retrieved records")
+    except GroundingValidationError as exc:
+        logger.warning("LLM answer failed grounding validation: %s", exc)
         fallback_answer, fallback_citations = _grounded_fallback(results)
         return RagAnswerResponse(
             answer=fallback_answer,
@@ -89,7 +90,8 @@ async def answer(request: RagSearchRequest) -> RagAnswerResponse:
     except Exception as exc:
         logger.exception("Grounded answer generation failed")
         raise HTTPException(status_code=502, detail="Grounded answer generation failed") from exc
-    retrieved_codes = [course["course_code"] for course in _course_context(results) if course["course_code"]]
-    cited_codes = set(re.findall(r"\b[A-Z]{2,5}\s\d{3}\b", grounded_answer))
-    citations = list(dict.fromkeys(code for code in retrieved_codes if code in cited_codes))
-    return RagAnswerResponse(answer=grounded_answer, citations=citations, results=results)
+    return RagAnswerResponse(
+        answer=grounded_answer.answer,
+        citations=grounded_answer.citations,
+        results=results,
+    )
