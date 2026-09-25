@@ -21,7 +21,6 @@ export function MapBeaconSheet({
     [description, setDescription] = useState(""),
     [minutes, setMinutes] = useState("120"),
     [maxAttendees, setMaxAttendees] = useState(""),
-    [courseMembersOnly, setCourseMembersOnly] = useState(false),
     [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     if (coordinates) void getCourses().then(setCourses);
@@ -31,13 +30,7 @@ export function MapBeaconSheet({
     e.preventDefault();
     if (!user) return onRequireAuth();
     const s = getSupabaseClient();
-    const { data } = await s
-      .from("course_offerings")
-      .select("id")
-      .eq("course_id", course)
-      .eq("active", true)
-      .maybeSingle();
-    if (!data) return setNotice("Select an active course.");
+    if (!course) return setNotice("Select an active course.");
     const duration = Number(minutes);
     if (!Number.isFinite(coordinates[0]) || !Number.isFinite(coordinates[1]))
       return setNotice("Choose a valid point on the map.");
@@ -49,12 +42,14 @@ export function MapBeaconSheet({
     const { error } = await s.rpc("create_map_beacon", {
       p_longitude: coordinates[0],
       p_latitude: coordinates[1],
-      p_course_offering_id: data.id,
+      p_course_offering_id: null,
+      p_course_id: course,
       p_title: title,
       p_description: description,
       p_duration_minutes: duration,
       p_max_attendees: capacity,
-      p_course_members_only: courseMembersOnly,
+      // Catalog-course beacons have no enrollment record to check yet.
+      p_course_members_only: false,
     });
     if (error)
       setNotice(
@@ -88,7 +83,7 @@ export function MapBeaconSheet({
             onChange={(e) => setCourse(e.target.value)}
             className="w-full rounded-xl border p-3"
           >
-            <option value="">Select course</option>
+            <option value="">Select active course</option>
             {courses.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.course_code} — {x.title}
@@ -137,11 +132,15 @@ export function MapBeaconSheet({
           <label className="flex gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
-              checked={courseMembersOnly}
-              onChange={(e) => setCourseMembersOnly(e.target.checked)}
+              checked={false}
+              disabled
+              aria-describedby="course-members-only-help"
             />
             Only allow students enrolled in this course to attend
           </label>
+          <p id="course-members-only-help" className="-mt-2 text-xs text-slate-500">
+            Available when term-specific course offerings are loaded.
+          </p>
         </div>
         <button className="mt-4 w-full rounded-xl bg-uic-blue py-3 font-semibold text-white">
           {user ? "Create beacon" : "Sign in to create beacon"}
