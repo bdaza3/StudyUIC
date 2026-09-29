@@ -2,7 +2,7 @@
 
 StudyUIC is a campus study companion for University of Illinois Chicago students. It brings campus study locations and peer study meetups into one map, and includes a course assistant for questions grounded in UIC catalog records.
 
-> **Project status:** Core map, spot details, authentication, and study-session flows are implemented. The course assistant and its retrieval backend are implemented, but need a configured Supabase database, imported course records, generated embeddings, and an OpenRouter key to provide live answers. Concierge intent extraction is an early API foundation; it does not yet search for a spot or create a meetup.
+> **Project status:** Core map, spot details, authentication, and study-session flows are implemented. The course assistant and its retrieval backend are implemented, but need a configured Supabase database, imported course records, generated embeddings, and an OpenRouter key to provide live answers. 
 
 ## What it does
 
@@ -10,7 +10,6 @@ StudyUIC is a campus study companion for University of Illinois Chicago students
 - Provides sign-in/profile UI and flows for creating and joining study sessions, with session membership and chat support in the database.
 - Supports map beacons tied to course offerings and live beacon updates.
 - Includes a course assistant that sends questions to the FastAPI `/api/v1/rag/answer` endpoint and presents retrieved course information.
-- Exposes `/api/v1/concierge/plan` to turn a natural-language request into a typed intent using OpenRouter when configured, with a deterministic fallback. The endpoint returns a plan; it does not execute actions.
 
 ## Architecture
 
@@ -95,4 +94,3 @@ The RAG path separates document construction, embedding generation, vector retri
 
 This project has been useful for working through database-backed product flows, access policies, realtime updates, ingestion validation, and the boundary between model output and authorized application actions. Next improvements include broadening and scheduling catalog ingestion, adding measurable retrieval evaluation, expanding course/degree data, and connecting concierge intents to authorized spot search and meetup workflows. Calendar access and action execution are not implemented.
 
-**Screenshots:** TODO — add current screenshots under `public/` and link them here.
