@@ -79,7 +79,10 @@ export function CourseAssistant() {
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(body?.detail || "Unable to answer your course question.");
+        const detail = Array.isArray(body?.detail)
+          ? body.detail.map((item: { msg?: string }) => item.msg).filter(Boolean).join(" ")
+          : body?.detail;
+        throw new Error(typeof detail === "string" ? detail : "Unable to answer your course question.");
       }
       setAnswer(body as RagAnswer);
     } catch (requestError) {
@@ -116,6 +119,9 @@ export function CourseAssistant() {
                 rows={3}
                 className="mt-1 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-uic-blue focus:ring-2 focus:ring-blue-100"
               />
+              <span className="mt-1 block text-right text-xs font-normal text-slate-500" aria-live="polite">
+                {question.length}/1000
+              </span>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="text-sm font-medium text-slate-700">

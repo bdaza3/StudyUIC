@@ -1,9 +1,10 @@
 """Query-time RAG retrieval: embed user query, search, filter, rank."""
 
 import logging
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.backend.services.embeddings import EmbeddingClient
 from app.backend.services.supabase import SupabaseClient
@@ -32,6 +33,34 @@ class RetrievalQuery(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
     department_filter: str | None = None
     course_level_filter: int | None = Field(default=None, ge=100, le=599)
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def normalize_question(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        # Remove control characters that can corrupt logs/prompts, then
+        # normalize whitespace. Keep punctuation and markup-like text as
+        # literal content; it is never interpreted as HTML by this API.
+        cleaned = "".join(
+            char for char in value
+            if char in "\n\t" or (ord(char) >= 32 and ord(char) != 127)
+        )
+        return " ".join(cleaned.split())
+
+    @field_validator("department_filter", mode="before")
+    @classmethod
+    def normalize_department(cls, value: object) -> object:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().upper()
+        if not normalized:
+            return None
+        if not re.fullmatch(r"[A-Z]{2,6}", normalized):
+            raise ValueError("Department must contain 2 to 6 letters.")
+        return normalized
 
 
 class RagRetriever:

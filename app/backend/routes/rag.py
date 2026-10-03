@@ -2,10 +2,11 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.backend.services.llm import GroundingValidationError, OpenRouterClient
+from app.backend.services.chatbot_security import limit_answer_requests, limit_search_requests
 from app.backend.services.rag_retrieval import RagRetriever, RetrievalQuery, RetrievalResult
 
 
@@ -57,13 +58,13 @@ async def _retrieve(request: RagSearchRequest) -> list[RetrievalResult]:
         raise HTTPException(status_code=502, detail="Course retrieval failed") from exc
 
 
-@router.post("/search", response_model=RagSearchResponse)
+@router.post("/search", response_model=RagSearchResponse, dependencies=[Depends(limit_search_requests)])
 async def search(request: RagSearchRequest) -> RagSearchResponse:
     """Embed a question and return the closest course documents from Supabase."""
     return RagSearchResponse(results=await _retrieve(request))
 
 
-@router.post("/answer", response_model=RagAnswerResponse)
+@router.post("/answer", response_model=RagAnswerResponse, dependencies=[Depends(limit_answer_requests)])
 async def answer(request: RagSearchRequest) -> RagAnswerResponse:
     """Generate an answer constrained to the courses returned by semantic retrieval."""
     results = await _retrieve(request)
