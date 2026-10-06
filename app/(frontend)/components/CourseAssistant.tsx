@@ -43,7 +43,13 @@ function AnswerText({ text }: { text: string }) {
   );
 }
 
-export function CourseAssistant() {
+export function CourseAssistant({
+  authenticated,
+  onRequireAuth,
+}: {
+  authenticated: boolean;
+  onRequireAuth: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [department, setDepartment] = useState("");
@@ -54,6 +60,10 @@ export function CourseAssistant() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!authenticated) {
+      onRequireAuth();
+      return;
+    }
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
 
@@ -96,11 +106,17 @@ export function CourseAssistant() {
     <section className="absolute right-4 top-24 z-20 w-[min(25rem,calc(100vw-2rem))]">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (!authenticated) {
+            onRequireAuth();
+            return;
+          }
+          setOpen((current) => !current);
+        }}
         aria-expanded={open}
         className="ml-auto flex rounded-xl bg-uic-blue px-4 py-3 text-sm font-semibold text-white shadow-lg"
       >
-        {open ? "Close course Q&A" : "Ask about courses"}
+        {open ? "Close course Q&A" : authenticated ? "Ask about courses" : "Sign in to ask about courses"}
       </button>
 
       {open && (

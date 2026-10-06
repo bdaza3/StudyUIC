@@ -245,7 +245,7 @@ export function MapDashboard() {
           </button>
         </div>
       </header>
-      <CourseAssistant />
+      <CourseAssistant authenticated={Boolean(user)} onRequireAuth={() => setAuthOpen(true)} />
       <button
         onClick={() => {
           if (!user) return setAuthOpen(true);
