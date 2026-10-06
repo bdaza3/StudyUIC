@@ -23,7 +23,7 @@ type RagAnswer = {
   results: RetrievedCourse[];
 };
 
-const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
 
 function AnswerText({ text }: { text: string }) {
   const lines = text.split("\n").filter(Boolean);
